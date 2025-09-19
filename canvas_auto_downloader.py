@@ -222,13 +222,19 @@ def download_file(session, url, save_path):
         print(f"Already downloaded: {os.path.basename(save_path)}")
         return
     
-    # Resolve Canvas file URLs to get proper download links
-    print(f"          Resolving URL: {url}")
-    resolved_url = resolve_canvas_file_url(session, url)
-    print(f"          Resolved to: {resolved_url}")
-    
+    # Determine if this is a Canvas file or external link
+    is_canvas = 'instructure.com' in url
+    if is_canvas:
+        print(f"          Resolving URL: {url}")
+        resolved_url = resolve_canvas_file_url(session, url)
+        print(f"          Resolved to: {resolved_url}")
+    else:
+        resolved_url = url
+        print(f"          External link detected: {url}")
+
+    headers = {'User-Agent': 'Mozilla/5.0'}
     try:
-        with session.get(resolved_url, stream=True) as r:
+        with session.get(resolved_url, stream=True, headers=headers, timeout=15) as r:
             r.raise_for_status()
             total = int(r.headers.get('content-length', 0))
             with open(save_path, 'wb') as f, tqdm(
@@ -237,18 +243,22 @@ def download_file(session, url, save_path):
                 for chunk in r.iter_content(chunk_size=8192):
                     f.write(chunk)
                     bar.update(len(chunk))
-        
+
         # Validate the downloaded file
         file_extension = os.path.splitext(save_path)[1]
         is_valid, message = validate_file_content(save_path, file_extension)
-        
+
         if is_valid:
             print(f"Downloaded: {os.path.basename(save_path)}")
         else:
             print(f"Downloaded: {os.path.basename(save_path)} - Warning: {message}")
             # Optionally remove the invalid file
             # os.remove(save_path)
-            
+
+    except requests.exceptions.Timeout:
+        print(f"Timeout while downloading {os.path.basename(save_path)}. Skipping.")
+    except requests.exceptions.RequestException as e:
+        print(f"Network error downloading {os.path.basename(save_path)}: {e}")
     except Exception as e:
         print(f"Error downloading {os.path.basename(save_path)}: {e}")
 
